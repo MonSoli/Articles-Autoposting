@@ -43,7 +43,7 @@ class Pipeline:
         draft = self.backend.ask(
             prompts.stage_draft(brief, outline, self.target_chars), system=prompts.SYSTEM
         )
-        draft = _strip_fences(draft)
+        draft = _clean_output(draft)
 
         final = draft
         if self.do_critique:
@@ -51,7 +51,7 @@ class Pipeline:
             critique = self.backend.ask(prompts.stage_critique(draft), system=prompts.SYSTEM)
 
             log.info("[5/6] Финальная правка")
-            final = _strip_fences(
+            final = _clean_output(
                 self.backend.ask(
                     prompts.stage_polish(draft, critique, self.target_chars),
                     system=prompts.SYSTEM,
@@ -190,3 +190,57 @@ def _strip_fences(text: str) -> str:
         if lines[-1].strip().startswith("```"):
             return "\n".join(lines[1:-1]).strip()
     return t
+
+
+# Служебные реплики, которые модель иногда добавляет перед текстом статьи,
+# несмотря на запрет в промпте: «Вот финальный текст:», «Final text below» и т.п.
+_PREAMBLE_RE = re.compile(
+    r"\b("
+    r"final text|text below|target range|as requested|here'?s the|word count"
+    r"|вот (?:финальн|итогов|готов|текст)|финальн\w+ (?:текст|версия)"
+    r"|итогов\w+ текст|готов\w+ текст|ниже\s+текст|текст\s+статьи\s+ниже"
+    r")\b",
+    re.I,
+)
+
+
+def _strip_preamble(text: str, *, max_lines: int = 3) -> str:
+    """Отрезает служебные реплики модели в начале и в конце ответа.
+
+    Проверяются только первые и последние строки: внутри статьи такие
+    формулировки — обычный текст, и трогать их нельзя.
+    """
+    lines = text.split("\n")
+
+    def is_meta(line: str) -> bool:
+        s = line.strip()
+        if not s or len(s) > 200:
+            return False
+        if s.startswith("#"):  # заголовок — уже содержимое
+            return False
+        return bool(_PREAMBLE_RE.search(s))
+
+    start = 0
+    for _ in range(max_lines):
+        while start < len(lines) and not lines[start].strip():
+            start += 1
+        if start < len(lines) and is_meta(lines[start]):
+            start += 1
+        else:
+            break
+
+    end = len(lines)
+    for _ in range(max_lines):
+        while end > start and not lines[end - 1].strip():
+            end -= 1
+        if end > start and is_meta(lines[end - 1]):
+            end -= 1
+        else:
+            break
+
+    return "\n".join(lines[start:end]).strip()
+
+
+def _clean_output(text: str) -> str:
+    """Полная очистка ответа модели перед разбором в блоки."""
+    return _strip_preamble(_strip_fences(text))

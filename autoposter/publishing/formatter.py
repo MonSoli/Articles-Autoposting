@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+import re
 
 from ..models import Article, Block, BlockType
 
@@ -84,6 +85,29 @@ def blocks_to_plain(article: Article) -> str:
     return "\n".join(l for l in lines if l.strip())
 
 
+# Штампы, выдающие ИИ-текст. Ищутся регулярками, а не подстроками:
+# «не только» само по себе — нормальный русский оборот, штамп — это
+# конструкция «не только …, но и …».
+_AI_CLICHES: list[tuple[str, str]] = [
+    (r"в современном мире", "в современном мире"),
+    (r"важно отметить", "важно отметить"),
+    (r"сто[ий]т отметить", "стоит отметить"),
+    (r"играет (?:важн\w+|ключев\w+) роль", "играет ключевую роль"),
+    (r"в заключение", "в заключение"),
+    (r"не только[^.!?]{3,80}?,?\s+но и", "не только…, но и"),
+    (r"динамично развива", "динамично развивается"),
+    (r"неотъемлем\w+ част", "неотъемлемая часть"),
+    (r"на сегодняшний день", "на сегодняшний день"),
+    (r"широк\w+ спектр", "широкий спектр"),
+]
+
+
+def find_ai_cliches(text: str) -> list[str]:
+    """Возвращает найденные штампы ИИ-текста."""
+    low = text.lower()
+    return [label for pattern, label in _AI_CLICHES if re.search(pattern, low)]
+
+
 def validate(article: Article) -> list[str]:
     """Проверка соответствия регламенту площадки перед публикацией."""
     problems: list[str] = []
@@ -121,13 +145,7 @@ def validate(article: Article) -> list[str]:
     for p in long_paras:
         problems.append(f"слишком длинный абзац: «{p}…»")
 
-    # признаки ИИ-текста
-    ai_markers = [
-        "в современном мире", "важно отметить", "играет ключевую роль",
-        "стоит отметить", "в заключение", "не только", "динамично развива",
-    ]
-    body = article.body_text.lower()
-    hits = [m for m in ai_markers if m in body]
+    hits = find_ai_cliches(article.body_text)
     if hits:
         problems.append(f"штампы ИИ-текста: {', '.join(hits)}")
 

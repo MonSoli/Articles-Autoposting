@@ -256,3 +256,59 @@ def test_markdown_render_includes_factchecks():
     md = a.to_markdown()
     assert "## Содержательный подзаголовок 0" in md
     assert "цена костюма" in md
+
+
+# ------------------------------------------- очистка ответов и штампы
+
+def test_strip_preamble_removes_model_chatter():
+    from autoposter.generation.pipeline import _clean_output
+
+    raw = "Good — within target range. Final text below.\n\nЯ слышал эту фразу в примерочной."
+    assert _clean_output(raw).startswith("Я слышал")
+
+
+def test_strip_preamble_removes_russian_chatter_and_trailer():
+    from autoposter.generation.pipeline import _clean_output
+
+    raw = "Вот финальный текст:\n\n## Заголовок\n\nТекст.\n\nГотовый текст выше."
+    out = _clean_output(raw)
+    assert out.startswith("## Заголовок")
+    assert "выше" not in out
+
+
+def test_strip_preamble_keeps_real_content():
+    from autoposter.generation.pipeline import _clean_output
+
+    body = "Я слышал эту фразу десятки раз.\n\n## Что это значит\n\nРазбираемся."
+    assert _clean_output(body) == body
+
+
+def test_strip_preamble_ignores_matches_inside_body():
+    from autoposter.generation.pipeline import _clean_output
+
+    body = (
+        "Первый абзац крючка, достаточно длинный чтобы не выглядеть служебным.\n\n"
+        "Вот финальный текст договора, который мне прислали из ателье.\n\n"
+        "Последний абзац."
+    )
+    assert "договора" in _clean_output(body)
+
+
+def test_ai_cliche_ignores_plain_ne_tolko():
+    from autoposter.publishing.formatter import find_ai_cliches
+
+    assert find_ai_cliches("Смотреть надо не только на этикетке магазина?") == []
+
+
+def test_ai_cliche_catches_full_construction():
+    from autoposter.publishing.formatter import find_ai_cliches
+
+    hits = find_ai_cliches("Костюм не только красивый, но и практичный.")
+    assert "не только…, но и" in hits
+
+
+def test_ai_cliche_catches_known_stamps():
+    from autoposter.publishing.formatter import find_ai_cliches
+
+    hits = find_ai_cliches("В современном мире это играет ключевую роль. Важно отметить.")
+    assert len(hits) == 3
