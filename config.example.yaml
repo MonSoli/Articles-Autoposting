@@ -1,0 +1,41 @@
+# Скопируйте в config.yaml и поправьте под себя.
+# Все значения ниже — умолчания, любой блок можно опустить.
+
+claude:
+  binary: claude        # Claude Code CLI (авторизация — вашей Pro/Max подпиской)
+  model: opus           # opus | sonnet | полный id модели
+  timeout: 900          # таймаут одного вызова, сек
+  retries: 3
+  session: true         # держать один разговор на все этапы пайплайна
+
+content:
+  target_chars: 9000    # оптимум для обучающего материала (см. базу знаний)
+  critique: true        # этап редакторской критики: дольше, но заметно лучше
+  default_subsite: fashion
+  recent_window: 30     # сколько прошлых заголовков показывать модели, чтоб не повторялась
+
+cover:
+  enabled: true
+  width: 1920           # vc.ru требует от 1800 px по широкой стороне
+  height: 1080
+  font_path: ""         # путь к .ttf; пусто — ищется системный
+  accent: "#c9a227"
+  palette:
+    - "#1c1c1e"
+    - "#2c2416"
+    - "#1a2620"
+    - "#241a26"
+    - "#1a1f2e"
+
+publish:
+  profile_dir: data/browser-profile   # сюда сохраняется сессия vc.ru
+  headless: false                     # для vc.ru лучше видимый браузер
+  base_url: "https://vc.ru"
+  slow_mo_ms: 120
+  timeout_ms: 45000
+  good_hours: [10, 11, 15, 16]        # окна публикации по МСК
+  screenshot_dir: data/screenshots
+  dry_run: true
+
+data_dir: data
+log_level: INFO

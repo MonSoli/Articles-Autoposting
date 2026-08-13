@@ -1,0 +1,123 @@
+# Селекторы редактора vc.ru (движок Osnova).
+#
+# Вёрстка площадки меняется, поэтому селекторы вынесены в конфиг: если что-то
+# перестало работать, правится здесь, без изменения кода.
+#
+# Для каждого элемента задаётся СПИСОК кандидатов — публикатор пробует их по
+# очереди и берёт первый видимый. Это защищает от точечных изменений вёрстки.
+#
+# Обновить под текущую вёрстку:  python run.py calibrate
+# Команда откроет редактор, сохранит скриншот и HTML в data/screenshots/
+# и выведет найденные кандидаты.
+
+editor_url: "https://vc.ru/writing"
+
+# --- вход ---
+login:
+  logged_in_marker:
+    - "[data-test='user-avatar']"
+    - "a[href*='/id']"
+    - ".andropov_user"
+    - "button:has-text('Написать')"
+  login_button:
+    - "button:has-text('Войти')"
+    - "a:has-text('Войти')"
+
+# --- поля статьи ---
+title:
+  - "[data-test='editor-title']"
+  - "div[contenteditable='true'][data-placeholder*='аголовок']"
+  - "textarea[placeholder*='аголовок']"
+  - ".editor__title [contenteditable='true']"
+  - "h1[contenteditable='true']"
+
+subtitle:
+  - "[data-test='editor-subtitle']"
+  - "div[contenteditable='true'][data-placeholder*='одзаголовок']"
+  - "div[contenteditable='true'][data-placeholder*='ид']"
+  - ".editor__subtitle [contenteditable='true']"
+
+body:
+  - "[data-test='editor-body']"
+  - "div[contenteditable='true'][data-placeholder*='екст']"
+  - ".editor__content [contenteditable='true']"
+  - ".l-island-round [contenteditable='true']"
+
+# --- вставка блоков ---
+add_block_button:
+  - "[data-test='editor-add-block']"
+  - "button[aria-label*='обавить']"
+  - ".editor-controls__button"
+
+block_menu:
+  image:
+    - "[data-test='block-image']"
+    - "button:has-text('Изображение')"
+    - "div[role='menuitem']:has-text('Картинк')"
+  quote:
+    - "[data-test='block-quote']"
+    - "button:has-text('Цитата')"
+  number:
+    - "[data-test='block-number']"
+    - "button:has-text('Цифра')"
+  delimiter:
+    - "[data-test='block-delimiter']"
+    - "button:has-text('Разделитель')"
+  poll:
+    - "[data-test='block-poll']"
+    - "button:has-text('Опрос')"
+
+# --- обложка ---
+cover:
+  file_input:
+    - "input[type='file'][accept*='image']"
+    - "input[type='file']"
+  show_in_feed_toggle:
+    - "button:has-text('Вывести в ленте')"
+    - "label:has-text('Вывести в ленте')"
+    - "[data-test='cover-in-feed']"
+  block_settings_button:
+    - "[data-test='block-settings']"
+    - "button[aria-label*='астройк']"
+
+# --- параметры публикации ---
+subsite:
+  picker:
+    - "[data-test='subsite-picker']"
+    - "button:has-text('Выберите подсайт')"
+    - "button:has-text('Мой блог')"
+    - ".subsite-selector"
+  search_input:
+    - "input[placeholder*='оиск']"
+    - "[data-test='subsite-search']"
+  option_template: "div[role='option']:has-text('{name}')"
+
+tags:
+  input:
+    - "[data-test='tags-input']"
+    - "input[placeholder*='ег']"
+    - "input[placeholder*='Тем']"
+
+# --- отправка ---
+publish:
+  open_settings_button:
+    - "button:has-text('Далее')"
+    - "button:has-text('Настройки')"
+    - "[data-test='editor-next']"
+  publish_button:
+    - "[data-test='editor-publish']"
+    - "button:has-text('Опубликовать')"
+    - "button:has-text('Отправить')"
+  success_marker:
+    - "a[href*='/fashion/']"
+    - "[data-test='entry-header']"
+    - "text=Материал опубликован"
+
+# Русские названия подсайтов для выбора в списке
+subsite_names:
+  fashion: "Мода"
+  life: "Личный опыт"
+  business: "Бизнес"
+  marketing: "Маркетинг"
+  tribuna: "Трибуна"
+  future: "Будущее"

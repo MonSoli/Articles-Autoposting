@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+data/browser-profile/
+data/screenshots/
+data/articles/
+data/covers/
+data/state.sqlite3
+config.yaml
+knowledge-export.md
+.DS_Store
