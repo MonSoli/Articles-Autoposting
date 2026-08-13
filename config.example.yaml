@@ -35,6 +35,8 @@ publish:
   timeout_ms: 45000
   good_hours: [10, 11, 15, 16]        # окна публикации по МСК
   screenshot_dir: data/screenshots
+  # true — publish только заполняет редактор и останавливается.
+  # Поставьте false, чтобы публиковать без флага --live (для автоматизации).
   dry_run: true
 
 data_dir: data

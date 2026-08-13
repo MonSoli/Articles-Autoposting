@@ -105,7 +105,9 @@ def cmd_generate(args, cfg: Config) -> int:
         print(f"\n✗ {msg}\n")
         return 1
 
-    if args.topic:
+    if getattr(args, "topic_obj", None):
+        topic = args.topic_obj          # из batch — с категорией и оценками
+    elif args.topic:
         topic = Topic(title=args.topic, category="custom")
     else:
         all_topics = topics_mod.load_topics(cfg.resolve("data/topics.json"))
@@ -181,7 +183,9 @@ def cmd_batch(args, cfg: Config) -> int:
     ok = 0
     for n, topic in enumerate(planned, 1):
         print(f"\n{'═' * 70}\n  [{n}/{len(planned)}] {topic.title}\n{'═' * 70}")
-        sub = argparse.Namespace(topic=topic.title, chars=args.chars, fast=args.fast)
+        sub = argparse.Namespace(
+            topic=topic.title, topic_obj=topic, chars=args.chars, fast=args.fast
+        )
         if cmd_generate(sub, cfg) == 0:
             ok += 1
     print(f"\nГотово: {ok} из {len(planned)}\n")
@@ -260,7 +264,8 @@ def cmd_publish(args, cfg: Config) -> int:
         print("\nИсправьте или запустите с --force\n")
         return 1
 
-    live = args.live
+    # публикуем, если явно передан --live либо в конфиге снят режим проверки
+    live = args.live or not cfg.publish.dry_run
     if live and not args.yes:
         print(f"\n  Публикуется в ленту vc.ru:")
         print(f"    «{article.title}»")
