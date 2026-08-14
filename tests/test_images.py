@@ -39,8 +39,8 @@ OPENVERSE_JSON = {
 
 WIKIMEDIA_JSON = {
     "query": {
-        "pages": {
-            "1": {
+        "pages": [
+            {
                 "title": "File:Suit.jpg",
                 "imageinfo": [
                     {
@@ -53,16 +53,18 @@ WIKIMEDIA_JSON = {
                             "Artist": {"value": '<a href="/u">Анна</a> Смирнова'},
                             "LicenseShortName": {"value": "CC BY 4.0"},
                             "LicenseUrl": {"value": "https://cc.org/by/4.0"},
+                            "Categories": {"value": "Men's suits|Tailoring"},
                         },
                     }
                 ],
             }
-        }
+        ]
     }
 }
 
 MET_SEARCH_JSON = {"objectIDs": [101, 102]}
 MET_OBJECT_JSON = {
+    "isPublicDomain": True,
     "primaryImage": "https://met.org/1.jpg",
     "primaryImageSmall": "https://met.org/1s.jpg",
     "title": "Frock coat",
@@ -181,36 +183,53 @@ def test_provider_survives_network_error(monkeypatch):
 # ------------------------------------------------------------------ отбор
 
 def _res(**kw):
-    base = dict(url="u", source="openverse", width=2000, height=1200)
+    base = dict(url="u", source="openverse", width=2000, height=1200,
+                title="wool suit jacket", tags=["suit", "wool"])
     base.update(kw)
     return im.ImageResult(**base)
 
 
-def test_searcher_filters_small_and_portrait():
-    s = im.ImageSearcher(order=[], min_width=1200)
-    assert s._acceptable(_res())
-    assert not s._acceptable(_res(width=800))
-    assert not s._acceptable(_res(width=1300, height=2000))
+def test_technical_gate_filters_small_and_portrait():
+    g = im.Scorer(min_width=1200).technical_gate
+    assert g(_res())
+    assert not g(_res(width=800))
+    assert not g(_res(width=1300, height=2000))
     # неизвестные размеры пропускаем, а не отбрасываем
-    assert s._acceptable(_res(width=0, height=0))
+    assert g(_res(width=0, height=0))
 
 
-def test_searcher_dedupes_and_limits(monkeypatch):
+def test_searcher_dedupes(monkeypatch):
     same = [_res(url="dup"), _res(url="dup"), _res(url="other")]
     monkeypatch.setattr(im.OpenverseProvider, "search", lambda self, q, limit=10: same)
     monkeypatch.setattr(im.WikimediaProvider, "search", lambda self, q, limit=10: same)
     found = im.ImageSearcher(order=["openverse", "wikimedia"]).search("q", limit=5)
-    assert [f.url for f in found] == ["dup", "other"]
+    assert sorted(f.url for f in found) == ["dup", "other"]
 
 
 def test_active_providers_without_keys():
-    active = im.ImageSearcher(unsplash_key="", pexels_key="").active_providers()
-    assert active == ["openverse", "wikimedia", "met"]
+    """Met, Wikimedia и Openverse работают без ключей; Pexels — нет."""
+    active = im.ImageSearcher(pexels_key="").active_providers()
+    assert active == ["met", "wikimedia", "openverse"]
 
 
-def test_active_providers_with_keys():
-    active = im.ImageSearcher(unsplash_key="a", pexels_key="b").active_providers()
-    assert active[0] == "unsplash" and "pexels" in active
+def test_active_providers_with_pexels_key():
+    active = im.ImageSearcher(pexels_key="b").active_providers()
+    assert "pexels" in active
+
+
+def test_unsplash_excluded_when_files_must_be_stored():
+    """Условия Unsplash запрещают хранение файлов — источник отбрасывается."""
+    order = ["unsplash", "met"]
+    assert "unsplash" not in im.ImageSearcher(
+        order=order, unsplash_key="k", require_downloadable=True
+    ).active_providers()
+    assert "unsplash" in im.ImageSearcher(
+        order=order, unsplash_key="k", require_downloadable=False
+    ).active_providers()
+
+
+def test_download_refuses_unsplash(tmp_path):
+    assert im.download(_res(source="unsplash"), tmp_path / "a.jpg") is None
 
 
 # ------------------------------------------------------------- атрибуция

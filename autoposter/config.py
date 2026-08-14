@@ -25,6 +25,7 @@ class ClaudeConfig:
 class ContentConfig:
     target_chars: int = 9000
     critique: bool = True
+    seo: bool = True             # этап SEO-доводки по замечаниям анализатора
     default_subsite: str = "fashion"
     # запрет на повтор тем: сколько последних заголовков показывать модели
     recent_window: int = 30
@@ -52,13 +53,18 @@ class ImagesConfig:
     min_width: int = 1200
     max_width: int = 1600
     landscape_only: bool = True
-    # порядок обхода источников; без ключей работают три последних
+    # Met, Wikimedia и Openverse работают без ключей.
+    # Unsplash намеренно не в умолчаниях: его условия запрещают хранить файлы
+    # у себя, а мы загружаем их в редактор vc.ru.
     order: list[str] = field(
-        default_factory=lambda: ["unsplash", "pexels", "openverse", "wikimedia", "met"]
+        default_factory=lambda: ["met", "pexels", "wikimedia", "openverse"]
     )
-    # ключи можно задать здесь либо через UNSPLASH_ACCESS_KEY / PEXELS_API_KEY
-    unsplash_key: str = ""
-    pexels_key: str = ""
+    # ключи можно задать здесь либо переменными окружения
+    pexels_key: str = ""            # PEXELS_API_KEY
+    pixabay_key: str = ""           # PIXABAY_API_KEY
+    unsplash_key: str = ""          # UNSPLASH_ACCESS_KEY, только для просмотра
+    openverse_client_id: str = ""       # OPENVERSE_CLIENT_ID
+    openverse_client_secret: str = ""   # OPENVERSE_CLIENT_SECRET
 
 
 @dataclass

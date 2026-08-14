@@ -18,6 +18,7 @@ from .media.illustrator import illustrate
 from .media.images import ImageSearcher
 from .models import Article, BlockType, Status, Topic
 from .publishing.formatter import validate
+from .seo import analyze as seo_analyze, keyword_report
 from .store import Store
 
 log = logging.getLogger("autoposter")
@@ -89,6 +90,9 @@ def _make_searcher(cfg: Config) -> ImageSearcher:
         landscape_only=cfg.images.landscape_only,
         unsplash_key=cfg.images.unsplash_key,
         pexels_key=cfg.images.pexels_key,
+        pixabay_key=cfg.images.pixabay_key,
+        openverse_client_id=cfg.images.openverse_client_id,
+        openverse_client_secret=cfg.images.openverse_client_secret,
     )
 
 
@@ -187,6 +191,7 @@ def cmd_generate(args, cfg: Config) -> int:
         backend=backend,
         target_chars=args.chars or cfg.content.target_chars,
         do_critique=not args.fast,
+        do_seo=cfg.content.seo and not args.no_seo,
     )
 
     print(f"\nГенерирую: {topic.title}\n")
@@ -261,7 +266,7 @@ def cmd_batch(args, cfg: Config) -> int:
         print(f"\n{'═' * 70}\n  [{n}/{len(planned)}] {topic.title}\n{'═' * 70}")
         sub = argparse.Namespace(
             topic=topic.title, topic_obj=topic, chars=args.chars,
-            fast=args.fast, no_photos=args.no_photos,
+            fast=args.fast, no_photos=args.no_photos, no_seo=args.no_seo,
         )
         if cmd_generate(sub, cfg) == 0:
             ok += 1
@@ -279,11 +284,24 @@ def cmd_review(args, cfg: Config) -> int:
 
     problems = validate(article)
     if problems:
-        print("Замечания:")
+        print("Замечания по регламенту:")
         for p in problems:
             print(f"  ! {p}")
     else:
-        print("Замечаний нет.")
+        print("Замечаний по регламенту нет.")
+
+    rep = seo_analyze(article)
+    print(f"\nSEO: {rep.score}/100 · плотность запроса {rep.density:.1f} на 1000 знаков")
+    for g in rep.good:
+        print(f"  + {g}")
+    for p in rep.problems:
+        print(f"  - {p}")
+
+    if article.topic and article.topic.secondary_queries:
+        queries = [article.topic.primary_query] + article.topic.secondary_queries
+        print("\n  Запрос                                        Вхожд.  На 1000")
+        for q, hits, dens in keyword_report(article, [q for q in queries if q]):
+            print(f"  {q[:44]:<46}{hits:<8}{dens:.2f}")
 
     if args.approve:
         article.status = Status.REVIEWED
@@ -424,6 +442,7 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--chars", type=int, help="целевой объём в знаках")
     g.add_argument("--fast", action="store_true", help="без этапа критики (быстрее, слабее)")
     g.add_argument("--no-photos", action="store_true", help="не подбирать фотографии")
+    g.add_argument("--no-seo", action="store_true", help="без этапа SEO-доводки")
     g.set_defaults(fn=cmd_generate)
 
     il = sub.add_parser("illustrate", help="подобрать фотографии к готовой статье")
@@ -443,6 +462,7 @@ def build_parser() -> argparse.ArgumentParser:
     b.add_argument("--chars", type=int)
     b.add_argument("--fast", action="store_true")
     b.add_argument("--no-photos", action="store_true")
+    b.add_argument("--no-seo", action="store_true")
     b.set_defaults(fn=cmd_batch)
 
     r = sub.add_parser("review", help="показать статью и проверить её")

@@ -27,6 +27,21 @@ cover:
     - "#241a26"
     - "#1a1f2e"
 
+images:
+  enabled: true
+  max_per_article: 4
+  min_width: 1200
+  max_width: 1600
+  landscape_only: true
+  # Met Museum — основной источник: ключ не нужен, всё под CC0,
+  # кураторские метаданные дают лучшую точность отбора.
+  # Unsplash не в списке намеренно: его условия запрещают хранить файлы у себя.
+  order: [met, pexels, wikimedia, openverse]
+  pexels_key: ""              # или переменная PEXELS_API_KEY
+  pixabay_key: ""             # или PIXABAY_API_KEY
+  openverse_client_id: ""     # без токена лимит Openverse около сотни запросов в сутки
+  openverse_client_secret: ""
+
 publish:
   profile_dir: data/browser-profile   # сюда сохраняется сессия vc.ru
   headless: false                     # для vc.ru лучше видимый браузер

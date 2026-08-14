@@ -1,4 +1,4 @@
-"""Пайплайн генерации статьи: угол → структура → черновик → критика → правка → мета."""
+"""Пайплайн генерации: угол → структура → черновик → критика → правка → SEO → мета."""
 
 from __future__ import annotations
 
@@ -22,24 +22,70 @@ class Pipeline:
     backend: ClaudeBackend
     target_chars: int = 9000
     do_critique: bool = True
+    do_seo: bool = True
+
+    @property
+    def total_steps(self) -> int:
+        return 4 + int(self.do_critique) * 2 + int(self.do_seo)
+
+    def _step(self, n: int) -> str:
+        """Человекочитаемый номер шага с учётом отключённых этапов."""
+        return f"{n}/{self.total_steps}"
+
+    def _seo_pass(self, text: str, primary: str, secondary: list[str]) -> str:
+        """Доводит текст по замечаниям SEO-анализатора.
+
+        Анализатор работает по готовому тексту, поэтому промпт получает
+        конкретный список проблем, а не общие требования.
+        """
+        from ..seo import analyze
+
+        probe = Article(blocks=parse_markdown_to_blocks(text))
+        report = analyze(probe, primary, secondary)
+        if not report.problems:
+            log.info("SEO: замечаний нет (оценка %s)", report.score)
+            return text
+
+        log.info("SEO: оценка %s, замечаний %s — правлю", report.score, len(report.problems))
+        for p in report.problems:
+            log.debug("  %s", p)
+        try:
+            fixed = _clean_output(
+                self.backend.ask(
+                    prompts.stage_seo(text, primary, secondary, report.problems),
+                    system=prompts.SYSTEM,
+                )
+            )
+        except Exception as exc:
+            log.warning("SEO-правка не удалась, оставляю как есть: %s", exc)
+            return text
+
+        after = analyze(Article(blocks=parse_markdown_to_blocks(fixed)), primary, secondary)
+        # правка не должна ухудшать текст: если стало хуже, откатываемся
+        if after.score < report.score:
+            log.warning("После правки оценка упала (%s → %s) — откат",
+                        report.score, after.score)
+            return text
+        log.info("SEO: оценка %s → %s", report.score, after.score)
+        return fixed
 
     def run(self, topic: Topic, recent_titles: list[str] | None = None) -> Article:
         recent_titles = recent_titles or []
         self.backend.reset()
 
-        log.info("[1/6] Угол и заголовки: %s", topic.title)
+        log.info("[%s] Угол и заголовки: %s", self._step(1), topic.title)
         brief = self.backend.ask(
             prompts.stage_angle(topic.title, topic.category, recent_titles),
             system=prompts.SYSTEM,
         )
         parsed = _parse_kv(brief)
 
-        log.info("[2/6] Структура")
+        log.info("[%s] Структура", self._step(2))
         outline = self.backend.ask(
             prompts.stage_outline(brief, self.target_chars), system=prompts.SYSTEM
         )
 
-        log.info("[3/6] Черновик (~%s знаков)", self.target_chars)
+        log.info("[%s] Черновик (~%s знаков)", self._step(3), self.target_chars)
         draft = self.backend.ask(
             prompts.stage_draft(brief, outline, self.target_chars), system=prompts.SYSTEM
         )
@@ -47,10 +93,10 @@ class Pipeline:
 
         final = draft
         if self.do_critique:
-            log.info("[4/6] Редакторская критика")
+            log.info("[%s] Редакторская критика", self._step(4))
             critique = self.backend.ask(prompts.stage_critique(draft), system=prompts.SYSTEM)
 
-            log.info("[5/6] Финальная правка")
+            log.info("[%s] Финальная правка", self._step(5))
             final = _clean_output(
                 self.backend.ask(
                     prompts.stage_polish(draft, critique, self.target_chars),
@@ -58,7 +104,15 @@ class Pipeline:
                 )
             )
 
-        log.info("[6/6] Метаданные и факт-чек")
+        primary = parsed.get("ГЛАВНЫЙ_ЗАПРОС", "").strip()
+        secondary = [
+            q.strip() for q in parsed.get("ДОП_ЗАПРОСЫ", "").split(";") if q.strip()
+        ]
+
+        if self.do_seo and primary:
+            final = self._seo_pass(final, primary, secondary)
+
+        log.info("[%s] Метаданные и факт-чек", self._step(6))
         meta_raw = self.backend.ask(prompts.stage_meta(final, brief), system=prompts.SYSTEM)
         meta = _parse_kv(meta_raw)
 
@@ -79,12 +133,10 @@ class Pipeline:
             article.notes = f"cover_text={cover_text}"
 
         # запросы для SEO кладём в тему
-        if topic.primary_query == "":
-            topic.primary_query = parsed.get("ГЛАВНЫЙ_ЗАПРОС", "").strip()
+        if not topic.primary_query:
+            topic.primary_query = primary
         if not topic.secondary_queries:
-            topic.secondary_queries = [
-                q.strip() for q in parsed.get("ДОП_ЗАПРОСЫ", "").split(";") if q.strip()
-            ]
+            topic.secondary_queries = secondary
 
         log.info(
             "Готово: «%s» — %s знаков, %s H2-блоков, %s пунктов на факт-чек",

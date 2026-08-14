@@ -39,7 +39,7 @@ SYSTEM = """\
 def stage_angle(topic_title: str, category: str, recent_titles: list[str]) -> str:
     """Этап 1: выбор угла и конфликта."""
     recent = "\n".join(f"- {t}" for t in recent_titles) or "- (пока ничего)"
-    return f"""{knowledge('01_viral', '03_domain', '04_voice')}
+    return f"""{knowledge('01_viral', '03_domain', '10_market', '11_market', '12_market', '04_voice')}
 
 # Задача
 
@@ -73,7 +73,7 @@ def stage_angle(topic_title: str, category: str, recent_titles: list[str]) -> st
 
 def stage_outline(brief: str, target_chars: int) -> str:
     """Этап 2: структура."""
-    return f"""{knowledge('00_platform', '01_viral', '02_seo')}
+    return f"""{knowledge('00_platform', '01_viral', '02_seo', '13_semantic')}
 
 # Бриф статьи
 
@@ -101,7 +101,7 @@ def stage_outline(brief: str, target_chars: int) -> str:
 
 def stage_draft(brief: str, outline: str, target_chars: int) -> str:
     """Этап 3: полный черновик."""
-    return f"""{knowledge('00_platform', '01_viral', '02_seo', '04_voice')}
+    return f"""{knowledge('00_platform', '01_viral', '02_seo', '04_voice', '10_market', '11_market', '12_market')}
 
 # Бриф
 
@@ -188,6 +188,50 @@ def stage_polish(article_md: str, critique: str, target_chars: int) -> str:
 выбрасывай.
 
 Выведи только финальный текст статьи, без комментариев.
+"""
+
+
+def stage_seo(article_md: str, primary: str, secondary: list[str], problems: list[str]) -> str:
+    """Этап 7: точечная SEO-доводка по замечаниям анализатора."""
+    issues = "\n".join(f"- {p}" for p in problems)
+    sec = "; ".join(secondary) or "(нет)"
+    return f"""{knowledge('02_seo', '13_semantic')}
+
+# Текст статьи
+
+{article_md}
+
+# Поисковые запросы
+
+Главный: {primary}
+Сопутствующие: {sec}
+
+# Что нашёл SEO-анализатор
+
+{issues}
+
+# Задача
+
+Устрани эти замечания, **не ухудшая текст для читателя**. Это главное условие:
+статья пишется для людей, поисковая оптимизация — вторична. Если исправление
+замечания сделает фразу неестественной, оставь как есть.
+
+Что можно делать:
+- переформулировать подзаголовки, чтобы включить сопутствующие запросы,
+  в том числе перевести часть в форму прямого вопроса;
+- добавить запрос в первый абзац, если это укладывается в живую речь;
+- добавить короткий (2–3 предложения) прямой ответ сразу после подзаголовка-вопроса.
+
+Чего делать нельзя:
+- вставлять ключи неестественными оборотами («костюм мужской купить»);
+- повышать плотность повторами;
+- добавлять воду ради объёма;
+- менять смысл, факты и цифры.
+
+Сохрани формат маркеров (`##`, `###`, `- `, `1. `, `> `, `[ЦИФРА]`,
+`[ИЛЛЮСТРАЦИЯ]`, `[ОПРОС]`).
+
+Выведи только итоговый текст статьи, без комментариев.
 """
 
 
