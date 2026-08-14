@@ -17,6 +17,7 @@ def blocks_to_html(article: Article) -> str:
     сотни кликов по меню блоков.
     """
     out: list[str] = []
+    img_no = 0
     for b in article.blocks:
         e = html.escape
         if b.type is BlockType.HEADING:
@@ -38,8 +39,10 @@ def blocks_to_html(article: Article) -> str:
         elif b.type is BlockType.DELIMITER:
             out.append("<hr>")
         elif b.type is BlockType.IMAGE:
-            # плейсхолдер: картинку загружает publisher отдельным шагом
-            out.append(f"<p>{IMAGE_MARK} {e(b.caption)}</p>")
+            # плейсхолдер с номером: publisher находит его в редакторе
+            # и заменяет на настоящий блок с загруженной фотографией
+            img_no += 1
+            out.append(f"<p>{image_mark(img_no)} {e(b.caption)}</p>")
         elif b.type is BlockType.POLL:
             opts = "".join(f"<li>{e(i)}</li>" for i in b.items)
             out.append(f"<p>{POLL_MARK} {e(b.text)}</p><ul>{opts}</ul>")
@@ -50,8 +53,30 @@ def blocks_to_html(article: Article) -> str:
     return "\n".join(out)
 
 
-IMAGE_MARK = "[[IMG]]"
 POLL_MARK = "[[POLL]]"
+
+
+def image_mark(n: int) -> str:
+    """Маркер места под фотографию: publisher ищет его в редакторе по тексту."""
+    return f"[[IMG{n}]]"
+
+
+def image_paths(article: Article) -> list[tuple[int, str, str]]:
+    """Фотографии статьи: (номер маркера, путь к файлу, подпись).
+
+    Номера совпадают с маркерами в HTML, поэтому publisher точно знает,
+    какой файл ставить на место какого плейсхолдера.
+    """
+    out: list[tuple[int, str, str]] = []
+    n = 0
+    for b in article.blocks:
+        if b.type is not BlockType.IMAGE:
+            continue
+        n += 1
+        path = b.meta.get("path", "")
+        if path:
+            out.append((n, path, b.caption))
+    return out
 
 
 def blocks_to_plain(article: Article) -> str:

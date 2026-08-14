@@ -25,7 +25,7 @@ from typing import Any
 import yaml
 
 from ..models import Article, BlockType
-from .formatter import blocks_to_html, blocks_to_plain
+from .formatter import blocks_to_html, blocks_to_plain, image_mark, image_paths
 
 log = logging.getLogger(__name__)
 
@@ -225,6 +225,137 @@ class VcRuPublisher:
             self._type_into(body, blocks_to_plain(article))
         page.wait_for_timeout(1500)
 
+    def insert_images(self, article: Article) -> int:
+        """Заменяет плейсхолдеры `[[IMGn]]` в теле на загруженные фотографии.
+
+        Тело вставляется одной операцией, поэтому фотографии попадают в текст
+        уже после — по меткам, которые расставил formatter. Если заменить
+        не удалось, метки остаются на месте, а пути к файлам печатаются
+        в лог: вставить их руками — минута работы.
+
+        Returns:
+            число вставленных фотографий.
+        """
+        photos = image_paths(article)
+        if not photos:
+            return 0
+
+        page = self.page
+        inserted = 0
+        for n, path, caption in photos:
+            if not Path(path).exists():
+                log.warning("Файл не найден, пропускаю: %s", path)
+                continue
+
+            mark = image_mark(n)
+            try:
+                holder = page.get_by_text(mark, exact=False).first
+                if not holder.count():
+                    log.warning("Метка %s не найдена в редакторе", mark)
+                    continue
+
+                # встаём на строку с меткой и выделяем её целиком
+                holder.click()
+                page.wait_for_timeout(250)
+                page.keyboard.press("Home")
+                page.keyboard.press("Shift+End")
+                page.keyboard.press("Delete")
+                page.wait_for_timeout(300)
+
+                if not self._attach_image_at_cursor(Path(path)):
+                    log.warning("Не удалось вставить фото на месте %s", mark)
+                    continue
+
+                page.wait_for_timeout(3000)
+                if caption:
+                    self._type_caption(caption)
+                inserted += 1
+                log.info("Вставлено фото %s/%s", inserted, len(photos))
+
+            except Exception as exc:
+                log.warning("Ошибка вставки фото %s: %s", mark, exc)
+
+        if inserted < len(photos):
+            log.warning(
+                "Вставлено %s из %s фото. Остальные добавьте вручную:\n%s",
+                inserted, len(photos),
+                "\n".join(f"  {n}: {p}" for n, p, _ in photos),
+            )
+        return inserted
+
+    def _attach_image_at_cursor(self, path: Path) -> bool:
+        """Загружает файл в блок на позиции курсора.
+
+        Основной путь — скрытый input[type=file] редактора. Запасной —
+        событие вставки из буфера: многие блочные редакторы принимают
+        картинку как paste.
+        """
+        page = self.page
+
+        # 1. через меню «Добавить блок» → «Изображение»
+        try:
+            add = self._first(self.sel["add_block_button"], timeout=3000, required=False)
+            if add:
+                add.click()
+                page.wait_for_timeout(600)
+                item = self._first(
+                    self.sel["block_menu"]["image"], timeout=3000, required=False
+                )
+                if item:
+                    with page.expect_file_chooser(timeout=8000) as fc:
+                        item.click()
+                    fc.value.set_files(str(path))
+                    return True
+        except Exception as exc:
+            log.debug("Меню блоков не сработало: %s", exc)
+
+        # 2. напрямую в скрытый input[type=file]
+        try:
+            inp = page.locator("input[type='file']").last
+            if inp.count():
+                inp.set_input_files(str(path))
+                return True
+        except Exception as exc:
+            log.debug("Прямая загрузка в input не сработала: %s", exc)
+
+        # 3. эмуляция вставки картинки из буфера обмена
+        try:
+            import base64
+
+            data = base64.b64encode(path.read_bytes()).decode()
+            return bool(page.evaluate(
+                """([b64, name]) => {
+                    const bin = atob(b64);
+                    const bytes = new Uint8Array(bin.length);
+                    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+                    const file = new File([bytes], name, {type: 'image/jpeg'});
+                    const dt = new DataTransfer();
+                    dt.items.add(file);
+                    const target = document.activeElement || document.body;
+                    return target.dispatchEvent(new ClipboardEvent('paste', {
+                        clipboardData: dt, bubbles: true, cancelable: true,
+                    }));
+                }""",
+                [data, path.name],
+            ))
+        except Exception as exc:
+            log.debug("Вставка через буфер не сработала: %s", exc)
+
+        return False
+
+    def _type_caption(self, caption: str) -> None:
+        """Печатает подпись под только что вставленной фотографией."""
+        page = self.page
+        try:
+            field = page.locator(
+                "[data-placeholder*='одпись'], [placeholder*='одпись']"
+            ).last
+            if field.count() and field.is_visible():
+                field.click()
+                field.type(caption, delay=8)
+        except Exception as exc:
+            log.debug("Подпись не проставлена: %s", exc)
+
     def upload_cover(self, cover_path: Path) -> bool:
         """Грузит обложку и включает «Вывести в ленте»."""
         if not cover_path or not Path(cover_path).exists():
@@ -344,6 +475,7 @@ class VcRuPublisher:
 
         self.open_editor()
         self.fill_article(article)
+        self.insert_images(article)
 
         if article.cover_path:
             self.upload_cover(Path(article.cover_path))

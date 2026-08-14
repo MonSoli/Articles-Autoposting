@@ -14,7 +14,9 @@ from .config import Config, ROOT
 from .generation.claude_backend import ClaudeBackend, GenerationError
 from .generation.pipeline import Pipeline
 from .media.cover import make_cover
-from .models import Article, Status, Topic
+from .media.illustrator import illustrate
+from .media.images import ImageSearcher
+from .models import Article, BlockType, Status, Topic
 from .publishing.formatter import validate
 from .store import Store
 
@@ -78,6 +80,71 @@ def cmd_doctor(args, cfg: Config) -> int:
     print("─" * 60)
     print("Всё готово.\n" if ok else "Есть проблемы — см. выше.\n")
     return 0 if ok else 1
+
+
+def _make_searcher(cfg: Config) -> ImageSearcher:
+    return ImageSearcher(
+        order=cfg.images.order,
+        min_width=cfg.images.min_width,
+        landscape_only=cfg.images.landscape_only,
+        unsplash_key=cfg.images.unsplash_key,
+        pexels_key=cfg.images.pexels_key,
+    )
+
+
+def cmd_illustrate(args, cfg: Config) -> int:
+    """Подобрать фотографии к уже сгенерированной статье."""
+    path = cfg.articles_dir / f"{args.article_id}.json"
+    if not path.exists():
+        print(f"Не найдено: {path}")
+        return 1
+    article = Article.load(path)
+
+    backend = None
+    if not args.no_claude:
+        backend = ClaudeBackend(**cfg.claude.__dict__)
+        good, _ = backend.check()
+        if not good:
+            print("Claude CLI недоступен — запросы соберу по словарю")
+            backend = None
+
+    n = illustrate(
+        article,
+        cfg.photos_dir,
+        searcher=_make_searcher(cfg),
+        backend=backend,
+        max_images=args.count or cfg.images.max_per_article,
+    )
+    article.save(path)
+    (cfg.articles_dir / f"{article.id}.md").write_text(
+        article.to_markdown(), encoding="utf-8"
+    )
+
+    print(f"\nПрикреплено фотографий: {n}\n")
+    for b in article.blocks:
+        if b.type is BlockType.IMAGE and b.meta.get("path"):
+            print(f"  «{b.meta.get('query', '')}» → {b.meta['path']}")
+            print(f"     {b.caption}")
+    print()
+    return 0
+
+
+def cmd_photos(args, cfg: Config) -> int:
+    """Проверить поиск фотографий по произвольному запросу."""
+    searcher = _make_searcher(cfg)
+    active = searcher.active_providers()
+    print(f"\nДоступные источники: {', '.join(active) or 'нет'}")
+    if not active:
+        return 1
+
+    results = searcher.search(args.query, limit=args.count)
+    print(f"Найдено: {len(results)}\n" + "─" * 78)
+    for r in results:
+        print(f"  {r.source:<10} {r.width}×{r.height}")
+        print(f"  {r.attribution()}")
+        print(f"  {r.url[:76]}")
+        print("─" * 78)
+    return 0
 
 
 def cmd_topics(args, cfg: Config) -> int:
@@ -145,6 +212,15 @@ def cmd_generate(args, cfg: Config) -> int:
         )
         article.cover_path = str(cfg.covers_dir / f"{article.id}.jpg")
 
+    if cfg.images.enabled and not args.no_photos:
+        illustrate(
+            article,
+            cfg.photos_dir,
+            searcher=_make_searcher(cfg),
+            backend=backend,
+            max_images=cfg.images.max_per_article,
+        )
+
     json_path = cfg.articles_dir / f"{article.id}.json"
     article.save(json_path)
     md_path = cfg.articles_dir / f"{article.id}.md"
@@ -184,7 +260,8 @@ def cmd_batch(args, cfg: Config) -> int:
     for n, topic in enumerate(planned, 1):
         print(f"\n{'═' * 70}\n  [{n}/{len(planned)}] {topic.title}\n{'═' * 70}")
         sub = argparse.Namespace(
-            topic=topic.title, topic_obj=topic, chars=args.chars, fast=args.fast
+            topic=topic.title, topic_obj=topic, chars=args.chars,
+            fast=args.fast, no_photos=args.no_photos,
         )
         if cmd_generate(sub, cfg) == 0:
             ok += 1
@@ -346,12 +423,26 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--topic", help="своя тема (иначе берётся из банка)")
     g.add_argument("--chars", type=int, help="целевой объём в знаках")
     g.add_argument("--fast", action="store_true", help="без этапа критики (быстрее, слабее)")
+    g.add_argument("--no-photos", action="store_true", help="не подбирать фотографии")
     g.set_defaults(fn=cmd_generate)
+
+    il = sub.add_parser("illustrate", help="подобрать фотографии к готовой статье")
+    il.add_argument("article_id")
+    il.add_argument("-n", "--count", type=int, help="сколько фотографий")
+    il.add_argument("--no-claude", action="store_true",
+                    help="составлять запросы по словарю, без обращения к модели")
+    il.set_defaults(fn=cmd_illustrate)
+
+    ph = sub.add_parser("photos", help="проверить поиск фотографий по запросу")
+    ph.add_argument("query")
+    ph.add_argument("-n", "--count", type=int, default=5)
+    ph.set_defaults(fn=cmd_photos)
 
     b = sub.add_parser("batch", help="сгенерировать несколько статей")
     b.add_argument("-n", "--count", type=int, default=3)
     b.add_argument("--chars", type=int)
     b.add_argument("--fast", action="store_true")
+    b.add_argument("--no-photos", action="store_true")
     b.set_defaults(fn=cmd_batch)
 
     r = sub.add_parser("review", help="показать статью и проверить её")
@@ -386,6 +477,7 @@ def main(argv: list[str] | None = None) -> int:
     setup_logging(cfg.log_level)
     cfg.articles_dir.mkdir(parents=True, exist_ok=True)
     cfg.covers_dir.mkdir(parents=True, exist_ok=True)
+    cfg.photos_dir.mkdir(parents=True, exist_ok=True)
     try:
         return args.fn(args, cfg)
     except KeyboardInterrupt:

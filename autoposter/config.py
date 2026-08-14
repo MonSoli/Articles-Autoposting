@@ -44,6 +44,24 @@ class CoverConfig:
 
 
 @dataclass
+class ImagesConfig:
+    """Фотографии-иллюстрации внутри статьи."""
+
+    enabled: bool = True
+    max_per_article: int = 4
+    min_width: int = 1200
+    max_width: int = 1600
+    landscape_only: bool = True
+    # порядок обхода источников; без ключей работают три последних
+    order: list[str] = field(
+        default_factory=lambda: ["unsplash", "pexels", "openverse", "wikimedia", "met"]
+    )
+    # ключи можно задать здесь либо через UNSPLASH_ACCESS_KEY / PEXELS_API_KEY
+    unsplash_key: str = ""
+    pexels_key: str = ""
+
+
+@dataclass
 class PublishConfig:
     # каталог профиля браузера — там живёт сессия vc.ru после разового логина
     profile_dir: str = "data/browser-profile"
@@ -63,6 +81,7 @@ class Config:
     claude: ClaudeConfig = field(default_factory=ClaudeConfig)
     content: ContentConfig = field(default_factory=ContentConfig)
     cover: CoverConfig = field(default_factory=CoverConfig)
+    images: ImagesConfig = field(default_factory=ImagesConfig)
     publish: PublishConfig = field(default_factory=PublishConfig)
     data_dir: str = "data"
     log_level: str = "INFO"
@@ -77,6 +96,7 @@ class Config:
             claude=ClaudeConfig(**raw.get("claude", {})),
             content=ContentConfig(**raw.get("content", {})),
             cover=CoverConfig(**raw.get("cover", {})),
+            images=ImagesConfig(**raw.get("images", {})),
             publish=PublishConfig(**raw.get("publish", {})),
             data_dir=raw.get("data_dir", "data"),
             log_level=raw.get("log_level", "INFO"),
@@ -93,6 +113,10 @@ class Config:
     @property
     def covers_dir(self) -> Path:
         return (ROOT / self.data_dir / "covers").resolve()
+
+    @property
+    def photos_dir(self) -> Path:
+        return (ROOT / self.data_dir / "photos").resolve()
 
     @property
     def db_path(self) -> Path:
